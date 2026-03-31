@@ -15,8 +15,24 @@ import concurrent.futures  # <-- Adicionado para deixar o download super rápido
 
 # Constantes
 BRT = pytz.timezone('America/Sao_Paulo')
-VERDE_TICKERS = ['DX-Y.NYB', 'GC=F', 'SI=F', '^TNX', '^FVX', '^IRX', 'ZB=F', 'USDCAD=X', 'USDJPY=X', 'USDCHF=X', 'USDSEK=X', 'USDMXN=X', 'USDZAR=X', 'USDTRY=X', 'CL=F', 'NG=F']
-VERMELHA_TICKERS = ['SPY', 'QQQ', 'EWZ', 'EEM', 'GLD', 'TLT', 'EURUSD=X', 'GBPUSD=X', 'AUDUSD=X', 'NZDUSD=X', '^GSPC', '^IXIC', '^BVSP', '^HSI', '^N225', '^FTSE', 'HG=F', 'BTC-USD']
+VERDE_TICKERS = [
+    'DX-Y.NYB', 'USDCAD=X', 'USDJPY=X', 'USDCHF=X', 'USDSEK=X', 
+    'USDMXN=X', 'USDZAR=X', 'USDTRY=X', 
+    'TLT', 'ZB=F'  # Títulos de proteção (sobem no pânico)
+]
+
+VERMELHA_TICKERS = [
+    # Bolsas e ETFs de Risco
+    'SPY', 'QQQ', 'EWZ', 'EEM', '^GSPC', '^IXIC', '^BVSP', '^HSI', '^N225', '^FTSE',
+    # Moedas fortes (sobem quando o dólar cai)
+    'EURUSD=X', 'GBPUSD=X', 'AUDUSD=X', 'NZDUSD=X',
+    # Commodities (sobem com economia forte / dólar fraco)
+    'HG=F', 'CL=F', 'NG=F', 'GC=F', 'GLD', 'SI=F',
+    # Cripto
+    'BTC-USD',
+    # Taxas de Juros (Yields sobem quando o mercado está otimista e vende proteção)
+    '^TNX', '^FVX', '^IRX'
+]
 TODOS_TICKERS = list(set(VERDE_TICKERS + VERMELHA_TICKERS + ['USDMXN=X', 'USDBRL=X']))
 EMAIL_REMETENTE = "nois.rco@gmail.com"
 SENHA_APP = ".Lj0882*"
