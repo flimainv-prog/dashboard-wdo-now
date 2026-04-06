@@ -21,7 +21,7 @@ def render_backtest(start_dt, end_dt):
             t_start_dia = pd.Timestamp(f"{dia_data} 02:00:00").tz_localize(BRT)
             t_end_dia = pd.Timestamp(f"{dia_data} 18:00:00").tz_localize(BRT)
             vc_dia = ativos(VERDE_TICKERS, t_start_dia, t_end_dia, modo='alta')
-            vm_dia = ativos(VERMELHA_TICKERS, t_start_dia, t_end_dia, modo='baixa')
+            vm_dia = ativos(VERMELHA_TICKERS, t_start_dia, t_end_dia, modo='alta')
             mxn_dia, brl_dia, mxn_ref_dia, brl_ref_dia = fetch_mxn_brl(t_start_dia, t_end_dia)
             
             sinal_dia_str = "⚪ SEM SINAL"
