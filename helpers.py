@@ -90,7 +90,7 @@ def fetch_fmp_data(tickers, interval="5min", days_back=5):
     df_list = []
     
     # Processamento paralelo: Baixa até 5 ativos ao mesmo tempo!
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(fetch_single_ticker_fmp, ticker, interval, start_date, end_date): ticker for ticker in tickers}
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
@@ -103,7 +103,7 @@ def fetch_fmp_data(tickers, interval="5min", days_back=5):
 
 def fetch_yf_data(tickers, period="5d"):
     try:
-        raw = yf.download(tickers, period=period, interval="5m", progress=False, group_by='ticker', threads=False) # Threads ativado no YF também
+        raw = yf.download(tickers, period=period, interval="5m", progress=False, group_by='ticker', threads=False) 
         if not raw.empty:
             if isinstance(raw.columns, pd.MultiIndex):
                 if 'Close' in raw.columns.levels[0] or 'close' in raw.columns.levels[0]:
@@ -124,13 +124,13 @@ def fetch_yf_data(tickers, period="5d"):
 
 @st.cache_data(ttl=3600, max_entries=1)
 def get_historico_base():
-    df_fmp = fetch_fmp_data(TODOS_TICKERS, interval="5min", days_back=22)
+    df_fmp = fetch_fmp_data(TODOS_TICKERS, interval="5min", days_back=10)
     tickers_fmp = df_fmp.columns.levels[0].tolist() if not df_fmp.empty else []
     tickers_faltantes = [t for t in TODOS_TICKERS if t not in tickers_fmp]
     
     df_yf = pd.DataFrame()
     if tickers_faltantes:
-        df_yf = fetch_yf_data(tickers_faltantes, period="22d")
+        df_yf = fetch_yf_data(tickers_faltantes, period="10d")
         
     if not df_fmp.empty and not df_yf.empty:
         return pd.concat([df_fmp, df_yf], axis=1)
@@ -405,7 +405,7 @@ def checar_e_enviar_alerta_di(di_nome, valor_atual):
             msg['From'] = EMAIL_REMETENTE
             msg['To'] = EMAIL_DESTINO
             msg['Subject'] = f"🚨 ALERTA {di_nome}: Variação de {valor_atual}%"
-            corpo = f"O contrato {di_nome} atingiu uma variação crítica de {valor_atual}%.\\nNível de Alerta: {'MÁXIMO (>2.0%)' if nivel_alerta == 2 else 'ATENÇÃO (>1.5%)'}"
+            corpo = f"O contrato {di_nome} atingiu uma variação crítica de {valor_atual}%.\nNível de Alerta: {'MÁXIMO (>2.0%)' if nivel_alerta == 2 else 'ATENÇÃO (>1.5%)'}"
             msg.attach(MIMEText(corpo, 'plain'))
             server = smtplib.SMTP('smtp.gmail.com', 587)
             server.starttls()
