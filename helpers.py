@@ -1,6 +1,4 @@
-# helpers.py
 import streamlit as st
-import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, time
@@ -11,38 +9,33 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from pathlib import Path
-import concurrent.futures  # <-- Adicionado para deixar o download super rápido!
+import concurrent.futures
 
-# Constantes
 BRT = pytz.timezone('America/Sao_Paulo')
 VERDE_TICKERS = [
     'DX-Y.NYB', 'USDCAD=X', 'USDJPY=X', 'USDCHF=X', 'USDSEK=X', 
     'USDMXN=X', 'USDZAR=X', 'USDTRY=X', 
-    'TLT', 'ZB=F'  # Títulos de proteção (sobem no pânico)
+    'TLT', 'ZB=F'
 ]
 
 VERMELHA_TICKERS = [
-    # Bolsas e ETFs de Risco
     'SPY', 'QQQ', 'EWZ', 'EEM', '^GSPC', '^IXIC', '^BVSP', '^HSI', '^N225', '^FTSE',
-    # Moedas fortes (sobem quando o dólar cai)
     'EURUSD=X', 'GBPUSD=X', 'AUDUSD=X', 'NZDUSD=X',
-    # Commodities (sobem com economia forte / dólar fraco)
     'HG=F', 'CL=F', 'NG=F', 'GC=F', 'GLD', 'SI=F',
-    # Cripto
     'BTC-USD',
-    # Taxas de Juros (Yields sobem quando o mercado está otimista e vende proteção)
     '^TNX', '^FVX', '^IRX'
 ]
 TODOS_TICKERS = list(set(VERDE_TICKERS + VERMELHA_TICKERS + ['USDMXN=X', 'USDBRL=X']))
+
+try:
+    FMP_API_KEY = st.secrets["FMP_API_KEY"]
+    SENHA_APP = st.secrets["SENHA_EMAIL"]
+except Exception:
+    FMP_API_KEY = "9X2sZMl2ELpHgGRIPhN3asKUdzIJt0q4"
+    SENHA_APP = ".Lj0882*"
+
 EMAIL_REMETENTE = "nois.rco@gmail.com"
-SENHA_APP = ".Lj0882*"
 EMAIL_DESTINO = "flima.jur@gmail.com"
-
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-}
-
-FMP_API_KEY = "9X2sZMl2ELpHgGRIPhN3asKUdzIJt0q4"
 
 def mapear_ticker_fmp(ticker_yf):
     t = ticker_yf.upper()
@@ -59,11 +52,10 @@ def mapear_ticker_fmp(ticker_yf):
     return t
 
 def fetch_single_ticker_fmp(ticker, interval, start_date, end_date):
-    """Função auxiliar para baixar um único ativo (usada no processamento paralelo)"""
     fmp_ticker = mapear_ticker_fmp(ticker)
     url = f"https://financialmodelingprep.com/api/v3/historical-chart/{interval}/{fmp_ticker}?from={start_date}&to={end_date}&apikey={FMP_API_KEY}"
     try:
-        resp = requests.get(url, timeout=5)
+        resp = requests.get(url, timeout=15)
         if resp.status_code == 200:
             data = resp.json()
             if isinstance(data, list) and len(data) > 0:
@@ -78,8 +70,10 @@ def fetch_single_ticker_fmp(ticker, interval, start_date, end_date):
                     df_temp.columns = pd.MultiIndex.from_product([[ticker], df_temp.columns])
                     df_temp.index = df_temp.index.tz_localize('America/New_York').tz_convert(BRT)
                     return df_temp
-    except Exception:
-        pass
+        else:
+            print(f"Erro FMP para {ticker}: HTTP {resp.status_code}")
+    except Exception as e:
+        print(f"Timeout/Erro de conexão FMP para {ticker}: {e}")
     return None
 
 def fetch_fmp_data(tickers, interval="5min", days_back=5):
@@ -88,9 +82,7 @@ def fetch_fmp_data(tickers, interval="5min", days_back=5):
     end_date = (agora + timedelta(days=1)).strftime('%Y-%m-%d')
     
     df_list = []
-    
-    # Processamento paralelo: Baixa até 5 ativos ao mesmo tempo!
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = {executor.submit(fetch_single_ticker_fmp, ticker, interval, start_date, end_date): ticker for ticker in tickers}
         for future in concurrent.futures.as_completed(futures):
             result = future.result()
@@ -101,60 +93,13 @@ def fetch_fmp_data(tickers, interval="5min", days_back=5):
         return pd.concat(df_list, axis=1)
     return pd.DataFrame()
 
-def fetch_yf_data(tickers, period="5d"):
-    try:
-        raw = yf.download(tickers, period=period, interval="5m", progress=False, group_by='ticker', threads=False) 
-        if not raw.empty:
-            if isinstance(raw.columns, pd.MultiIndex):
-                if 'Close' in raw.columns.levels[0] or 'close' in raw.columns.levels[0]:
-                    raw.columns = raw.columns.swaplevel(0, 1)
-                    raw.sort_index(axis=1, level=0, inplace=True)
-                
-                raw.rename(columns=lambda x: str(x).capitalize() if isinstance(x, str) else x, level=1, inplace=True)
-                raw.index = raw.index.tz_convert(BRT) if raw.index.tz is not None else raw.index.tz_localize('UTC').tz_convert(BRT)
-                return raw
-            elif len(tickers) == 1:
-                raw.rename(columns=lambda x: str(x).capitalize() if isinstance(x, str) else x, inplace=True)
-                raw.columns = pd.MultiIndex.from_product([[tickers[0]], raw.columns])
-                raw.index = raw.index.tz_convert(BRT) if raw.index.tz is not None else raw.index.tz_localize('UTC').tz_convert(BRT)
-                return raw
-    except Exception:
-        pass
-    return pd.DataFrame()
-
 @st.cache_data(ttl=3600, max_entries=1)
 def get_historico_base():
-    # REDUZIDO DE 22 PARA 7 DIAS
-    df_fmp = fetch_fmp_data(TODOS_TICKERS, interval="5min", days_back=7)
-    tickers_fmp = df_fmp.columns.levels[0].tolist() if not df_fmp.empty else []
-    tickers_faltantes = [t for t in TODOS_TICKERS if t not in tickers_fmp]
-    
-    df_yf = pd.DataFrame()
-    if tickers_faltantes:
-        # REDUZIDO DE 22d PARA 7d
-        df_yf = fetch_yf_data(tickers_faltantes, period="7d")
-        
-    if not df_fmp.empty and not df_yf.empty:
-        return pd.concat([df_fmp, df_yf], axis=1)
-    elif not df_fmp.empty:
-        return df_fmp
-    return df_yf
+    return fetch_fmp_data(TODOS_TICKERS, interval="5min", days_back=7)
 
 @st.cache_data(ttl=60, max_entries=1, show_spinner=False)
 def get_dados_recentes():
-    df_fmp = fetch_fmp_data(TODOS_TICKERS, interval="5min", days_back=5)
-    tickers_fmp = df_fmp.columns.levels[0].tolist() if not df_fmp.empty else []
-    tickers_faltantes = [t for t in TODOS_TICKERS if t not in tickers_fmp]
-    
-    df_yf = pd.DataFrame()
-    if tickers_faltantes:
-        df_yf = fetch_yf_data(tickers_faltantes, period="5d")
-        
-    if not df_fmp.empty and not df_yf.empty:
-        return pd.concat([df_fmp, df_yf], axis=1)
-    elif not df_fmp.empty:
-        return df_fmp
-    return df_yf
+    return fetch_fmp_data(TODOS_TICKERS, interval="5min", days_back=3)
 
 def get_cached_market_data():
     hist = get_historico_base()
@@ -204,9 +149,6 @@ def ativos(tickers_list, start_dt, end_dt, threshold=0.003, modo='alta'):
     else:
         anchor_time = (start_naive - timedelta(days=dias_para_domingo)).replace(hour=18, minute=0, second=0, microsecond=0)
 
-    # --- INÍCIO DA NOVA INTELIGÊNCIA INSTITUCIONAL ---
-    
-    # 1. PONDERAÇÃO (Pesos): Ativos mais importantes têm mais força na linha
     PESOS = {
         'DX-Y.NYB': 3.0, '^TNX': 3.0, 'SPY': 3.0, '^GSPC': 3.0,
         'QQQ': 2.0, '^IXIC': 2.0, 'GC=F': 2.0, 'CL=F': 2.0,
@@ -237,17 +179,13 @@ def ativos(tickers_list, start_dt, end_dt, threshold=0.003, modo='alta'):
                     s_window = s_window.resample('5min').last().reindex(full_idx).ffill()
                     s_window.index = s_window.index.tz_localize(BRT)
                     
-                    # 2. NORMALIZAÇÃO POR Z-SCORE (Filtro de Ruído)
-                    # Calcula a volatilidade real do ativo para criar um limiar dinâmico
                     volatilidade = s_full.pct_change().std()
                     if pd.isna(volatilidade) or volatilidade == 0:
                         volatilidade = 0.0005
                         
-                    # O ativo só pontua se mover 2x a sua volatilidade normal (elimina falsos rompimentos)
                     limiar_dinamico = (volatilidade * 100) * 2.0 
-                    
                     var_pct = 100 * (s_window - ref_val) / abs(ref_val)
-                    peso_ativo = PESOS.get(ticker, 1.0) # Peso 1.0 para ativos comuns não listados acima
+                    peso_ativo = PESOS.get(ticker, 1.0)
                     
                     series_dict[ticker] = {
                         'var_pct': var_pct,
@@ -276,12 +214,10 @@ def ativos(tickers_list, start_dt, end_dt, threshold=0.003, modo='alta'):
             
         resultado_final += voto
 
-    # Retorna exatamente na mesma escala de 0 a 100% para não quebrar o gráfico
     return (resultado_final / peso_total) * 100.0
 
 def fetch_mxn_brl(start_dt, end_dt):
     raw_data = get_market_data(start_dt, end_dt)
-    
     fake_idx = pd.date_range(start_dt, end_dt, freq='5min')
     fake_series = pd.Series(1.0, index=fake_idx)
     
@@ -390,9 +326,6 @@ def fetch_di_variacao(ticker_tv="BMFBOVESPA:DI1F2034", ticker_advfn="DI1F34"):
     return 0.0
 
 def checar_e_enviar_alerta_di(di_nome, valor_atual):
-    EMAIL_REMETENTE = "nois.rco@gmail.com"
-    SENHA_APP = ".Lj0882*"
-    EMAIL_DESTINO = "flima.jur@gmail.com"
     nivel_alerta = 0
     if abs(valor_atual) >= 2.0:
         nivel_alerta = 2
@@ -400,6 +333,7 @@ def checar_e_enviar_alerta_di(di_nome, valor_atual):
         nivel_alerta = 1
     if nivel_alerta == 0:
         return ""
+        
     chave_alerta = f"alerta_enviado_{di_nome}_{nivel_alerta}"
     if chave_alerta not in st.session_state:
         try:
@@ -417,10 +351,8 @@ def checar_e_enviar_alerta_di(di_nome, valor_atual):
             st.session_state[chave_alerta] = True
         except Exception:
             pass
+            
     if nivel_alerta == 2:
         return "animation: pulse 1s infinite; border: 2px solid #EF4444; box-shadow: 0 0 15px #EF4444;"
     else:
         return "animation: pulse 2s infinite; border: 2px solid #F59E0B; box-shadow: 0 0 10px #F59E0B;"
-
-def enviar_alerta_email(di_nome, valor_atual, nivel_alerta):
-    pass
