@@ -70,10 +70,14 @@ def fetch_single_ticker_fmp(ticker, interval, start_date, end_date):
                     df_temp.columns = pd.MultiIndex.from_product([[ticker], df_temp.columns])
                     df_temp.index = df_temp.index.tz_localize('America/New_York').tz_convert(BRT)
                     return df_temp
+            else:
+                # Se a API retornou 200 OK, mas a lista veio vazia
+                st.sidebar.error(f"FMP retornou vazio para {ticker}. Verifique se seu plano suporta dados intraday (5min).")
         else:
-            print(f"Erro FMP para {ticker}: HTTP {resp.status_code}")
+            # Se a API recusou a conexão (ex: chave inválida)
+            st.sidebar.error(f"Erro FMP {ticker}: HTTP {resp.status_code} - {resp.text[:100]}")
     except Exception as e:
-        print(f"Timeout/Erro de conexão FMP para {ticker}: {e}")
+        st.sidebar.error(f"Timeout/Conexão FMP para {ticker}: {e}")
     return None
 
 def fetch_fmp_data(tickers, interval="5min", days_back=5):
