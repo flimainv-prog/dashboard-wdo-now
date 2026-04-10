@@ -4,7 +4,6 @@ import pandas as pd
 import plotly.graph_objects as go
 from datetime import time
 
-# Imports dos helpers
 from helpers import (
     ativos, fetch_mxn_brl, ultimo_candle_real, BRT, VERDE_TICKERS, VERMELHA_TICKERS,
     fetch_di_variacao, gerar_dias_uteis
@@ -14,7 +13,7 @@ def render_grafico(start_dt, end_dt, placeholder_dados):
     # --- PROCESSAMENTO DOS DADOS PARA O GRÁFICO (Variável pela Sidebar) ---
     with st.spinner("Processando Inteligência de Gráfico..."):
         verde_count = ativos(VERDE_TICKERS, start_dt, end_dt, modo='alta')
-        vermelha_count = ativos(VERMELHA_TICKERS, start_dt, end_dt, modo='alta')
+        vermelha_count = ativos(VERMELHA_TICKERS, start_dt, end_dt, modo='baixa')
         mxn_bruto, brl_bruto, mxn_ref, brl_ref = fetch_mxn_brl(start_dt, end_dt)
 
     # Verificação de dados após processamento
@@ -23,31 +22,33 @@ def render_grafico(start_dt, end_dt, placeholder_dados):
         hoje = pd.Timestamp.now(tz=BRT).date()
 
         if end_dt.date() > hoje:
-            motivos.append("datas futuras")
+            motivos.append("datas futuras (yfinance não tem dados reais)")
         if start_dt.weekday() >= 5 or end_dt.weekday() >= 5:
-            motivos.append("fins de semana/feriados")
+            motivos.append("fins de semana/feriados (sem negociações)")
         if (end_dt - start_dt).total_seconds() < 3600:
             motivos.append("período muito curto")
 
-        motivo_str = "; ".join(motivos) if motivos else "sem dados no período selecionado"
+        motivo_str = "; ".join(motivos) if motivos else "erro na API ou período sem negociações"
 
         st.warning(
-            f"Dados insuficientes para montar o gráfico ({motivo_str}). "
-            "Tente datas recentes úteis (seg-sex, 9h-17h)."
+            f"⚠️ Dados insuficientes para montar o gráfico ({motivo_str}). "
+            "Tente datas recentes úteis (seg-sex, últimos 5-10 dias, 9h-17h) no popover."
         )
 
         fig_placeholder = go.Figure()
         fig_placeholder.add_annotation(
-            text="Aguardando dados válidos...\nSugestão: use datas úteis recentes.",
-            xref="paper", yref="paper", x=0.5, y=0.5,
-            showarrow=False, font_size=14, font_color="#94A3B8"
+            text="Aguardando dados válidos...\nSugestão: Use datas recentes (ex: 25/03/2024 a 29/03/2024, 9h-17h)",
+            x=0.5, y=0.5, xref="paper", yref="paper",
+            showarrow=False, font=dict(size=16, color="white")
         )
         fig_placeholder.update_layout(
-            height=400,
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)'
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(visible=False),
+            yaxis=dict(visible=False),
+            margin=dict(l=20, r=20, t=20, b=20)
         )
-        st.plotly_chart(fig_placeholder, use_container_width=True)
+        st.plotly_chart(fig_placeholder, use_container_width=True, config={'displayModeBar': False})
         return
 
     agora_idx = pd.Timestamp(ultimo_candle_real())
