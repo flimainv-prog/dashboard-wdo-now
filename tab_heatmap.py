@@ -1,40 +1,43 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import numpy as np
-
-from helpers import gerar_dias_uteis, ativos
+import plotly.graph_objects as go
+from helpers import BRT, VERDE_TICKERS, VERMELHA_TICKERS, ativos
 
 def render_heatmap(start_dt, end_dt):
-    st.markdown("<h3 style='color: #94A3B8; text-align: center; margin-bottom: 0px;'>🔥 Mapa de Calor Abertura</h3>", unsafe_allow_html=True)
-    st.info("Mapa de Calor da Abertura em desenvolvimento. Adicione aqui a análise de correlação ou volatilidade.")
-    
-    dias = pd.date_range(start=start_dt.date(), end=end_dt.date(), freq='D')
-    horas = [f'{h:02d}:00' for h in range(9, 18)]
-    
-    data = np.random.rand(len(dias), len(horas)) * 100
-    df_heatmap = pd.DataFrame(data, index=dias, columns=horas)
-    
-    df_long = df_heatmap.reset_index().melt(id_vars='index', var_name='Hora', value_name='Volatilidade')
-    df_long.rename(columns={'index': 'Data'}, inplace=True)
-    
-    if not df_long.empty:
-        fig = px.density_heatmap(
-            df_long,
-            x="Hora",
-            y="Data",
-            z="Volatilidade",
-            color_continuous_scale="Viridis",
-            title="Mapa de Calor da Volatilidade Diária (Exemplo)"
-        )
-        fig.update_layout(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font_color="white",
-            xaxis_title="Hora do Dia",
-            yaxis_title="Data",
-            coloraxis_colorbar=dict(title="Volatilidade (%)")
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Nenhum dado disponível para o mapa de calor.")
+    st.markdown("### Mapa de Calor Abertura")
+
+    verde = ativos(VERDE_TICKERS, start_dt, end_dt, modo='alta')
+    vermelha = ativos(VERMELHA_TICKERS, start_dt, end_dt, modo='baixa')
+
+    if verde.empty or vermelha.empty:
+        st.warning("Sem dados suficientes para o mapa de calor.")
+        return
+
+    common_idx = verde.index.intersection(vermelha.index)
+    if common_idx.empty:
+        st.warning("Sem dados em comum para o mapa de calor.")
+        return
+
+    verde = verde.loc[common_idx]
+    vermelha = vermelha.loc[common_idx]
+
+    heat = pd.DataFrame({
+        "Verde": verde,
+        "Vermelha": vermelha
+    })
+
+    fig = go.Figure(data=go.Heatmap(
+        z=heat.T.values,
+        x=[d.strftime("%H:%M") for d in heat.index],
+        y=heat.columns,
+        colorscale='Viridis'
+    ))
+
+    fig.update_layout(
+        height=450,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=10, r=10, t=40, b=20)
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
